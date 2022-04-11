@@ -23,7 +23,6 @@
  * [Karpenter provisioner](#Karpenter-provisioner)
  * [Test karpenter scaleout nodes](#Test-karpenter-scaleout-nodes)
  * [Karpenter Deprovisioning](#Karpenter-Deprovisioning)
- * [Karpenter with AWS Node Termination Handler](#Karpenter-with-AWS-Node-Termination-Handler)
  * [Troubleshooting](#Troubleshooting)
  * [Karpenter improvements](#Karpenter-improvements)
  * [Conclusion](#Conclusion)
@@ -157,49 +156,6 @@ karpenter-67f957c8c4-t752q   2/2     Running   0          2m56s
   2022-04-10T10:34:01.000Z        INFO    controller.node Triggering termination after 30s for empty node {"commit": "78d3031", "node": "ip-10-0-147-5.ap-northeast-2.compute.internal"}
   2022-04-10T10:34:01.031Z        INFO    controller.termination  Cordoned node   {"commit": "78d3031", "node": "ip-10-0-147-5.ap-northeast-2.compute.internal"}
   2022-04-10T10:34:01.289Z        INFO    controller.termination  Deleted node    {"commit": "78d3031", "node": "ip-10-0-147-5.ap-northeast-2.compute.internal"}
-  ```
-
-## 🚀 **Karpenter with AWS Node Termination Handler** <a name="Karpenter-with-AWS-Node-Termination-Handler"></a>
-- For using spot instnaces in karpenter provisioner, we need to know that Karpenter does not handle the Spot Interruption Termination Notice (ITN) two-minute warning so AWS Node Termination Handler (NTH) is the solution to gracefully cordon and drain the spot nodes when they are interrupted. Pods that require checkpointing or other forms of graceful draining, requiring the 2-mins before shutdown, will need NTH.
-- Here we use NTH with AWS SQS processor mode.
-- NTH service account (The termination handler Queue Processor requires AWS IAM permissions to monitor and manage the SQS queue and to query the EC2 API.). As karpenter service account describe above, we need IAM OIDC and then we can use CDK to create IRSA for NTH, then apply serviceAccount yaml file [nth-sa.yaml](https://github.com/vumdao/aws-karpenter-hands-on/blob/master/yaml/nth-sa.yaml)
-- Generate SQS queue
-- Create Amazon EventBridge rules so that Spot Interruptions, Instance state changes, Rebalance Recommendations, and AWS Health Scheduled Changes are sent to the SQS queue.
-- Source code for using CDK: [nth-sa-sqs.ts](https://github.com/vumdao/aws-karpenter-hands-on/blob/master/src/nth-sa-sqs.ts)
-- Generate NTH [nth-values.yaml](https://github.com/vumdao/aws-karpenter-hands-on/blob/master/yaml/nth-values.yaml) base on output of SQS URL
-- Install aws-node-termination-handler
-  ```
-  ⚡ $ helm upgrade --install aws-node-termination-handler eks/aws-node-termination-handler -n kube-system --values values/tyo.nth-values.yaml
-  Release "aws-node-termination-handler" does not exist. Installing it now.
-  NAME: aws-node-termination-handler
-  LAST DEPLOYED: Sun Apr 10 15:39:43 2022
-  NAMESPACE: kube-system
-  STATUS: deployed
-  REVISION: 1
-  TEST SUITE: None
-  NOTES:
-  ***********************************************************************
-  * AWS Node Termination Handler                                        *
-  ***********************************************************************
-    Chart version: 0.18.0
-    App version:   1.16.0
-    Image tag:     public.ecr.aws/aws-ec2/aws-node-termination-handler:v1.16.0
-    Mode :         Queue Processor
-  ***********************************************************************
-
-  ⚡ $ kubectl get pod -n kube-system -l app.kubernetes.io/name=aws-node-termination-handler
-  NAME                                            READY   STATUS    RESTARTS   AGE
-  aws-node-termination-handler-65b75b4896-74zqg   1/1     Running   0          95s
-  ```
-
-- Check the log to see if NTH can listen to the SQS queue
-  ```
-  kubectl logs -f --tail=100 -n kube-system aws-node-termination-handler-5889bcd797-h2sth
-  2022/04/10 15:53:07 INF Starting to serve handler /healthz, port 8080
-  2022/04/10 15:53:07 INF Started watching for interruption events
-  2022/04/10 15:53:07 INF Kubernetes AWS Node Termination Handler has started successfully!
-  2022/04/10 15:53:07 INF Started watching for event cancellations
-  2022/04/10 15:53:07 INF Started monitoring for events event_type=SQS_TERMINATE
   ```
 
 ## 🚀 **Troubleshooting** <a name="Troubleshooting"></a>
